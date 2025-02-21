@@ -449,6 +449,7 @@ description = r"""
 🎪 Try to drop your video/image, assign the target masks with a few clicks, and get the the matting results 🤡!<br>
 
 *Note: Due to the GPU memory requirements, any input with too large a resolution will be difficult to process!<br>
+Click <b>Load Video</b>, after uploading a video, to move it over to the masking window. This can take a few moments with larger video files <br>
 """
 article = r"""
 <b>If MatAnyone is helpful, please help to 🌟 the <a href='https://github.com/pq-yang/MatAnyone' target='_blank'>Github Repo</a>. Thanks!</b>
