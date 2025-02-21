@@ -2,7 +2,7 @@ const path = require('path')
 module.exports = {
   version: "3.2",
   title: "MatAnyone",
-  description: "",
+  description: "https://github.com/pq-yang/MatAnyone.git",
   icon: "icon.png",
   menu: async (kernel, info) => {
     let installed = info.exists("app/env")
