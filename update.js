@@ -10,5 +10,12 @@ module.exports = {
       path: "app",
       message: "git pull"
     }
-  }]
+  }, {
+    method: "fs.copy",
+    params: {
+      src: "app.py",
+      dest: "app/hugging_face/app.py"
+    }
+  },
+ ]
 }
