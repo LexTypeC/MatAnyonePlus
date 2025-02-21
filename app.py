@@ -444,12 +444,11 @@ load_file_from_url(os.path.join(media_url, 'tutorial_multi_targets.mp4'), assets
 title = r"""<div class="multi-layer" align="center"><span>MatAnyone</span></div>
 """
 description = r"""
-<b>Official Gradio demo</b> for <a href='https://github.com/pq-yang/MatAnyone' target='_blank'><b>MatAnyone: Stable Video Matting with Consistent Memory Propagation</b></a>.<br>
+<b>Unofficial Pinokio demo</b> for <a href='https://github.com/pq-yang/MatAnyone' target='_blank'><b>MatAnyone: Stable Video Matting with Consistent Memory Propagation</b></a>.<br>
 🔥 MatAnyone is a practical human video matting framework supporting target assignment 🎯.<br>
 🎪 Try to drop your video/image, assign the target masks with a few clicks, and get the the matting results 🤡!<br>
 
-*Note: Due to the online GPU memory constraints, any input with too big resolution will be resized to 1080p.<br>
-🚀 If you wish to run MatAnyone on higher resolution inputs, we recommend luanching the [demo](https://github.com/pq-yang/MatAnyone#circus_tent-interactive-demo) locally.*
+*Note: Due to the GPU memory requirements, any input with too large a resolution will be difficult to process!<br>
 """
 article = r"""
 <b>If MatAnyone is helpful, please help to 🌟 the <a href='https://github.com/pq-yang/MatAnyone' target='_blank'>Github Repo</a>. Thanks!</b>
