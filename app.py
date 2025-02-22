@@ -105,15 +105,55 @@ def get_frames_from_image(image_input, image_state):
                         gr.update(visible=True), gr.update(visible=True, value=[]), \
                         gr.update(visible=True)
 
+# Add helper function for resizing
+def resize_video_frames(frames, max_size):
+    """
+    Resize video frames if they're too large.
+    Maintains aspect ratio by scaling the larger dimension to max_size.
+    """
+    if not frames or not frames[0].size:
+        return frames
+        
+    frame_height, frame_width = frames[0].shape[:2]
+    
+    # Check if resize needed
+    if max(frame_height, frame_width) <= max_size:
+        return frames
+        
+    # Calculate new dimensions maintaining aspect ratio
+    if frame_width > frame_height:
+        new_width = max_size
+        new_height = int(frame_height * (max_size / frame_width))
+    else:
+        new_height = max_size
+        new_width = int(frame_width * (max_size / frame_height))
+        
+    # Resize all frames
+    resized_frames = [cv2.resize(f, (new_width, new_height), interpolation=cv2.INTER_AREA) for f in frames]
+    
+    return resized_frames
+
+# Add a function to get video dimensions
+def get_video_dimensions(video_path):
+    try:
+        cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        cap.release()
+        return f"Original video dimensions: {width}x{height}, FPS: {fps}"
+    except:
+        return "Could not determine video dimensions"
+
+# Add function to update video info on upload
+def update_video_info(video_path):
+    if not video_path:
+        return gr.update(visible=False, value="")
+    dim_info = get_video_dimensions(video_path)
+    return gr.update(visible=True, value=dim_info)
+
 # extract frames from upload video
-def get_frames_from_video(video_input, video_state):
-    """
-    Args:
-        video_path:str
-        timestamp:float64
-    Return 
-        [[0:nearest_frame], [nearest_frame:], nearest_frame]
-    """
+def get_frames_from_video(video_input, video_state, enable_resize=False, max_size=1080):
     video_path = video_input
     frames = []
     user_name = time.time()
@@ -121,10 +161,21 @@ def get_frames_from_video(video_input, video_state):
     # extract Audio
     try:
         audio_path = video_input.replace(".mp4", "_audio.wav")
-        ffmpeg.input(video_path).output(audio_path, format='wav', acodec='pcm_s16le', ac=2, ar='44100').run(overwrite_output=True, quiet=True)
+        probe = ffmpeg.probe(video_path)
+        audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+        
+        if audio_streams:  # Only try to extract if video has audio
+            try:
+                ffmpeg.input(video_path).output(audio_path, format='wav', acodec='pcm_s16le', ac=2, ar='44100').run(overwrite_output=True, quiet=True)
+            except ffmpeg.Error as e:
+                print(f"Audio extraction error: {str(e)}")  # Keep error messages for actual ffmpeg errors
+                audio_path = ""
+        else:
+            audio_path = ""
+            print("Note: Input video has no audio track")
     except Exception as e:
-        print(f"Audio extraction error: {str(e)}")
-        audio_path = ""  # Set to "" if extraction fails
+        print(f"Error checking audio stream: {str(e)}")  # Keep error messages for probe failures
+        audio_path = ""
     
     # extract frames
     try:
@@ -139,19 +190,15 @@ def get_frames_from_video(video_input, video_state):
                     break
             else:
                 break
+        cap.release()
     except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
         print("read_frame_source:{} error. {}\n".format(video_path, str(e)))
-    image_size = (frames[0].shape[0],frames[0].shape[1]) 
 
-    # [remove for local demo] resize if resolution too big
-    # if image_size[0]>=1280 and image_size[0]>=1280:
-    #     scale = 1080 / min(image_size)
-    #     new_w = int(image_size[1] * scale)
-    #     new_h = int(image_size[0] * scale)
-    #     # update frames
-    #     frames = [cv2.resize(f, (new_w, new_h), interpolation=cv2.INTER_AREA) for f in frames]
-    #     # update image_size
-    #     image_size = (frames[0].shape[0],frames[0].shape[1]) 
+    # Resize frames if enabled
+    if enable_resize and frames:
+        frames = resize_video_frames(frames, max_size)
+
+    image_size = (frames[0].shape[0], frames[0].shape[1])
 
     # initialize video_state
     video_state = {
@@ -164,17 +211,29 @@ def get_frames_from_video(video_input, video_state):
         "select_frame_number": 0,
         "fps": fps,
         "audio": audio_path
-        }
-    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{}".format(video_state["video_name"], round(video_state["fps"], 0), len(frames), image_size)
+    }
+    
+    video_info = "Video Name: {},\nFPS: {},\nTotal Frames: {},\nImage Size:{}".format(
+        video_state["video_name"], 
+        round(video_state["fps"], 0), 
+        len(frames), 
+        image_size
+    )
+    
     model.samcontroler.sam_controler.reset_image() 
     model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])
-    return video_state, video_info, video_state["origin_images"][0], gr.update(visible=True, maximum=len(frames), value=1), gr.update(visible=False, maximum=len(frames), value=len(frames)), \
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=True),\
-                        gr.update(visible=True), gr.update(visible=True), \
-                        gr.update(visible=True), gr.update(visible=False), \
-                        gr.update(visible=False), gr.update(visible=True), \
-                        gr.update(visible=True)
+    return [video_state, video_info, video_state["origin_images"][0], 
+            gr.update(visible=True, maximum=len(frames), value=1), 
+            gr.update(visible=False, maximum=len(frames), value=len(frames)),
+            gr.update(visible=True), gr.update(visible=True),
+            gr.update(visible=True), gr.update(visible=True),
+            gr.update(visible=True), gr.update(visible=True),
+            gr.update(visible=True), gr.update(visible=False),
+            gr.update(visible=False), gr.update(visible=True),
+            gr.update(visible=True),
+            gr.update(interactive=True),
+            gr.update(interactive=True),
+            gr.update(visible=True)]
 
 # get the select frame from gradio slider
 def select_video_template(image_selection_slider, video_state, interactive_state):
@@ -297,7 +356,18 @@ def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
 
     return foreground_output, alpha_output
 
-# video matting
+
+def generate_output_filename(video_name, output_type="fg"):
+    # Remove extension from video name and limit length to 32 chars
+    base_name = os.path.splitext(video_name)[0][:32]
+    # Generate timestamp
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    # Add output type (fg for foreground or alpha for alpha mask)
+    suffix = "_fg" if output_type == "fg" else "_alpha"
+    
+    return f"{base_name}_{timestamp}{suffix}.mp4"
+
+# Video Matting
 def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size):
     matanyone_processor = InferenceCore(matanyone_model, cfg=matanyone_model.cfg)
     if interactive_state["track_end_number"]:
@@ -317,7 +387,6 @@ def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     else:      
         template_mask = video_state["masks"][video_state["select_frame_number"]]
     fps = video_state["fps"]
-
     audio_path = video_state["audio"]
 
     # operation error
@@ -325,8 +394,12 @@ def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
         template_mask[0][0]=1
     foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size)
 
-    foreground_output = generate_video_from_frames(foreground, output_path="./results/{}_fg.mp4".format(video_state["video_name"]), fps=fps, audio_path=audio_path) # import video_input to name the output video
-    alpha_output = generate_video_from_frames(alpha, output_path="./results/{}_alpha.mp4".format(video_state["video_name"]), fps=fps, gray2rgb=True, audio_path=audio_path) # import video_input to name the output video
+    # Generate unique filenames with timestamp
+    fg_output_path = os.path.join("./results/", generate_output_filename(video_state["video_name"], output_type="fg"))
+    alpha_output_path = os.path.join("./results/", generate_output_filename(video_state["video_name"], output_type="alpha"))
+
+    foreground_output = generate_video_from_frames(foreground, output_path=fg_output_path, fps=fps, audio_path=audio_path)
+    alpha_output = generate_video_from_frames(alpha, output_path=alpha_output_path, fps=fps, gray2rgb=True, audio_path=audio_path)
     
     return foreground_output, alpha_output
 
@@ -443,42 +516,8 @@ load_file_from_url(os.path.join(media_url, 'tutorial_multi_targets.mp4'), assets
 # documents
 title = r"""<div class="multi-layer" align="center"><span>MatAnyone</span></div>
 """
-description = r"""
-<b>Unofficial Pinokio demo</b> for <a href='https://github.com/pq-yang/MatAnyone' target='_blank'><b>MatAnyone: Stable Video Matting with Consistent Memory Propagation</b></a>.<br>
-🔥 MatAnyone is a practical human video matting framework supporting target assignment 🎯.<br>
-🎪 Try to drop your video/image, assign the target masks with a few clicks, and get the the matting results 🤡!<br>
-
-*Note: Due to the GPU memory requirements, any input with too large a resolution will be difficult to process!<br>
-Click <b>Load Video</b>, after uploading a video, to move it over to the masking window. This can take a few moments with larger video files <br>
-"""
 article = r"""
 <b>If MatAnyone is helpful, please help to 🌟 the <a href='https://github.com/pq-yang/MatAnyone' target='_blank'>Github Repo</a>. Thanks!</b>
-
----
-
-📑 **Citation**
-<br>
-If our work is useful for your research, please consider citing:
-```bibtex
-@InProceedings{yang2025matanyone,
-     title     = {{MatAnyone}: Stable Video Matting with Consistent Memory Propagation},
-     author    = {Yang, Peiqing and Zhou, Shangchen and Zhao, Jixin and Tao, Qingyi and Loy, Chen Change},
-     booktitle = {arXiv preprint arXiv:2501.14677},
-     year      = {2025}
-}
-```
-📝 **License**
-<br>
-This project is licensed under <a rel="license" href="https://github.com/pq-yang/MatAnyone/blob/main/LICENSE">S-Lab License 1.0</a>. 
-Redistribution and use for non-commercial purposes should follow this license.
-<br>
-📧 **Contact**
-<br>
-If you have any questions, please feel free to reach me out at <b>peiqingyang99@outlook.com</b>.
-<br>
-👏 **Acknowledgement**
-<br>
-This project is built upon [Cutie](https://github.com/hkchengrex/Cutie), with the interactive demo adapted from [ProPainter](https://github.com/sczhou/ProPainter), leveraging segmentation capabilities from [Segment Anything](https://github.com/facebookresearch/segment-anything). Thanks for their awesome works!
 """
 
 my_custom_css = """
@@ -516,6 +555,15 @@ button {border-radius: 8px !important;}
         padding: 10px;
         border-radius: 10px;
     }
+
+.info-text {
+    color: #666;
+    font-size: 0.9em;
+    margin: 8px 0;
+    padding: 8px;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+}
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarpanch:wght@400;500;600;700;800;900&family=Sen:wght@400..800&family=Sixtyfour+Convergence&family=Stardos+Stencil:wght@400;700&display=swap');
@@ -563,20 +611,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
         </div>
     ''')
 
-    gr.Markdown(description)
-
-    with gr.Group(elem_classes="gr-monochrome-group", visible=True):
-        with gr.Row():
-            with gr.Accordion("📕 Video Tutorial (click to expand)", open=False, elem_classes="custom-bg"):
-                with gr.Row():
-                    with gr.Column():
-                        gr.Markdown("### Case 1: Single Target")
-                        gr.Video(value="./assets/tutorial_single_target.mp4", elem_classes="video")
-
-                    with gr.Column():
-                        gr.Markdown("### Case 2: Multiple Targets")
-                        gr.Video(value="./assets/tutorial_multi_targets.mp4", elem_classes="video")
-
     with gr.Tabs():
         with gr.TabItem("Video"):
             click_state = gr.State([[],[]])
@@ -609,7 +643,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                 }
             )
 
-            with gr.Group(elem_classes="gr-monochrome-group", visible=True):
+            with gr.Group(visible=True):
                 with gr.Row():
                     with gr.Accordion('MatAnyone Settings (click to expand)', open=False):
                         with gr.Row():
@@ -643,19 +677,46 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                 scale=1)
                             mask_dropdown = gr.Dropdown(multiselect=True, value=[], label="Mask Selection", info="Choose 1~all mask(s) added in Step 2", visible=False)
             
-            gr.Markdown("---")
+            gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
 
             with gr.Column():
                 # input video
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2): 
-                        gr.Markdown("## Step1: Upload video")
+                        gr.Markdown("## Step 1: Upload & Configure Video")
                     with gr.Column(scale=2): 
-                        step2_title = gr.Markdown("## Step2: Add masks <small>(Several clicks then **`Add Mask`** <u>one by one</u>)</small>", visible=False)
+                        step2_title = gr.Markdown("## Step 2: Masking <small> (Use **`Add Mask`** to add multiple masks)</small>", visible=False)
+                
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2):      
                         video_input = gr.Video(label="Input Video", elem_classes="video")
+                        input_video_info = gr.Markdown(visible=False)
+                        
+                        with gr.Group():
+                            gr.Markdown("⚠️ Note: Video can only be resized once per video upload")
+                            enable_resize = gr.Checkbox(
+                                label="Resize Large Videos",
+                                value=False,
+                                info="Enable to automatically resize videos that are too large",
+                                interactive=True
+                            )
+                            max_size = gr.Slider(
+                                label="Target Resolution",
+                                minimum=256,
+                                maximum=2048,
+                                step=16,
+                                value=1024,
+                                info="Videos will be resized to this resolution (maintaining aspect ratio)",
+                                interactive=True,
+                                visible=False
+                            )
+                            gr.Markdown("🎬 Designed for short-form video")
+                        
                         extract_frames_button = gr.Button(value="Load Video", interactive=True, elem_classes="new_button")
+                        
+                        # Add a warning/info message with custom styling
+                        resize_info = gr.Markdown(visible=False, value="ℹ️ Video will be resized to maintain max dimension of 1024px")
+                        
                     with gr.Column(scale=2):
                         video_info = gr.Textbox(label="Video Info", visible=False)
                         template_frame = gr.Image(label="Start Frame", type="pil",interactive=True, elem_id="template_frame", visible=False, elem_classes="image")
@@ -665,8 +726,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                             remove_mask_button = gr.Button(value="Remove Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100) # no use
                             matting_button = gr.Button(value="Video Matting", interactive=True, visible=False, elem_classes="green_button", min_width=100)
                 
-                gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
-
                 # output video
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2):
@@ -681,12 +740,46 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             extract_frames_button.click(
                 fn=get_frames_from_video,
                 inputs=[
-                    video_input, video_state
+                    video_input, 
+                    video_state,
+                    enable_resize,
+                    max_size
                 ],
                 outputs=[video_state, video_info, template_frame,
-                        image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, add_mask_button, matting_button, template_frame,
-                        foreground_video_output, alpha_video_output, foreground_output_button, alpha_output_button, mask_dropdown, step2_title]
+                        image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, 
+                        add_mask_button, matting_button, template_frame,
+                        foreground_video_output, alpha_video_output, foreground_output_button, alpha_output_button, 
+                        mask_dropdown, step2_title,
+                        enable_resize, max_size, resize_info]
             )   
+
+            # Update the visibility toggle to also update the info message
+            def update_resize_visibility(enabled):
+                if enabled:
+                    return {
+                        max_size: gr.update(visible=True),
+                        resize_info: gr.update(visible=True)
+                    }
+                return {
+                    max_size: gr.update(visible=False),
+                    resize_info: gr.update(visible=False)
+                }
+
+            # Update the slider value change handler
+            def update_resize_info(value):
+                return gr.update(value=f"ℹ️ Video will be resized to maintain max dimension of {value}px")
+
+            enable_resize.change(
+                fn=update_resize_visibility,
+                inputs=[enable_resize],
+                outputs=[max_size, resize_info]
+            )
+
+            max_size.change(
+                fn=update_resize_info,
+                inputs=[max_size],
+                outputs=[resize_info]
+            )
 
             # second step: select images from slider
             image_selection_slider.release(fn=select_video_template, 
@@ -732,6 +825,12 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             
             # clear input
             video_input.change(
+                fn=update_video_info,
+                inputs=[video_input],
+                outputs=[input_video_info]
+            )
+            
+            video_input.change(
                 fn=restart,
                 inputs=[],
                 outputs=[ 
@@ -769,12 +868,24 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             )
 
             # set example
-            gr.Markdown("---")
-            gr.Markdown("## Examples")
-            gr.Examples(
-                examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample0-720p.mp4", "test-sample1-720p.mp4", "test-sample2-720p.mp4", "test-sample3-720p.mp4"]],
-                inputs=[video_input],
-            )
+            with gr.Accordion("📎 Examples (click to expand)", open=False):
+                gr.Examples(
+                    examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample0-720p.mp4", "test-sample1-720p.mp4", "test-sample2-720p.mp4", "test-sample3-720p.mp4"]],
+                    inputs=[video_input],
+                )
+
+            # video tutorial    
+            with gr.Group(visible=True):
+                with gr.Row():
+                    with gr.Accordion("📕 Video Tutorial (click to expand)", open=False):
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("### Case 1: Single Target")
+                                gr.Video(value="./assets/tutorial_single_target.mp4", elem_classes="video")
+
+                            with gr.Column():
+                                gr.Markdown("### Case 2: Multiple Targets")
+                                gr.Video(value="./assets/tutorial_multi_targets.mp4", elem_classes="video")
 
         with gr.TabItem("Image"):
             click_state = gr.State([[],[]])
@@ -806,7 +917,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                 }
             )
 
-            with gr.Group(elem_classes="gr-monochrome-group", visible=True):
+            with gr.Group(visible=True):
                 with gr.Row():
                     with gr.Accordion('MatAnyone Settings (click to expand)', open=False):
                         with gr.Row():
@@ -839,8 +950,8 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                 min_width=100,
                                 scale=1)
                             mask_dropdown = gr.Dropdown(multiselect=True, value=[], label="Mask Selection", info="Choose 1~all mask(s) added in Step 2", visible=False)
-            
-            gr.Markdown("---")
+
+            gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
 
             with gr.Column():
                 # input image
@@ -848,7 +959,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                     with gr.Column(scale=2): 
                         gr.Markdown("## Step1: Upload image")
                     with gr.Column(scale=2): 
-                        step2_title = gr.Markdown("## Step2: Add masks <small>(Several clicks then **`Add Mask`** <u>one by one</u>)</small>", visible=False)
+                        step2_title = gr.Markdown("## Step2: Add masks <small> (Several clicks then **`Add Mask`** <u>one by one</u>)</small>", visible=False)
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2):      
                         image_input = gr.Image(label="Input Image", elem_classes="image")
@@ -861,8 +972,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                             add_mask_button = gr.Button(value="Add Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
                             remove_mask_button = gr.Button(value="Remove Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
                             matting_button = gr.Button(value="Image Matting", interactive=True, visible=False, elem_classes="green_button", min_width=100)
-
-                gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
 
                 # output image
                 with gr.Row(equal_height=True):
@@ -965,13 +1074,38 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             )
 
             # set example
-            gr.Markdown("---")
-            gr.Markdown("## Examples")
-            gr.Examples(
-                examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample0.jpg", "test-sample1.jpg"]],
-                inputs=[image_input],
-            )
+            with gr.Accordion("📎 Examples (click to expand)", open=False):
+                gr.Examples(
+                    examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample0.jpg", "test-sample1.jpg"]],
+                    inputs=[image_input],
+                )
 
+    with gr.Accordion("📚 Citation, License & Acknowledgements", open=False):
+        gr.Markdown("""
+    📑 **Citation**
+    <br>
+    If our work is useful for your research, please consider citing:
+    ```bibtex
+    @InProceedings{yang2025matanyone,
+         title     = {{MatAnyone}: Stable Video Matting with Consistent Memory Propagation},
+         author    = {Yang, Peiqing and Zhou, Shangchen and Zhao, Jixin and Tao, Qingyi and Loy, Chen Change},
+         booktitle = {arXiv preprint arXiv:2501.14677},
+         year      = {2025}
+    }
+    ```
+    📝 **License**
+    <br>
+    This project is licensed under <a rel="license" href="https://github.com/pq-yang/MatAnyone/blob/main/LICENSE">S-Lab License 1.0</a>. 
+    Redistribution and use for non-commercial purposes should follow this license.
+    <br>
+    📧 **Contact**
+    <br>
+    If you have any questions, please feel free to reach me out at <b>peiqingyang99@outlook.com</b>.
+    <br>
+    👏 **Acknowledgement**
+    <br>
+    This project is built upon [Cutie](https://github.com/hkchengrex/Cutie), with the interactive demo adapted from [ProPainter](https://github.com/sczhou/ProPainter), leveraging segmentation capabilities from [Segment Anything](https://github.com/facebookresearch/segment-anything). Thanks for their awesome works!
+    """)
     gr.Markdown(article)
 
 demo.queue()
