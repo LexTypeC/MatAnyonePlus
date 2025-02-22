@@ -10,6 +10,7 @@ import ffmpeg
 import imageio
 import argparse
 from PIL import Image
+import subprocess
 
 import cv2
 import torch
@@ -70,16 +71,8 @@ def get_prompt(click_state, click_input):
     return prompt
 
 def get_frames_from_image(image_input, image_state):
-    """
-    Args:
-        video_path:str
-        timestamp:float64
-    Return 
-        [[0:nearest_frame], [nearest_frame:], nearest_frame]
-    """
-
-    user_name = time.time()
     frames = [image_input] * 2  # hardcode: mimic a video with 2 frames
+    user_name = time.time()
     image_size = (frames[0].shape[0],frames[0].shape[1]) 
     # initialize video_state
     image_state = {
@@ -150,21 +143,51 @@ def get_video_dimensions(video_path):
         return "Could not determine video dimensions"
 
 # Add function to update video info on upload
-def update_video_info(video_path):
+def update_video_info(video_path, will_resize=False, target_size=1024):
     if not video_path:
         return gr.update(visible=False, value="")
-    dim_info = get_video_dimensions(video_path)
-    return gr.update(visible=True, value=dim_info)
+    
+    try:
+        cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        cap.release()
+        
+        dim_info = f"Original video dimensions: {width}x{height}, FPS: {fps}"
+        
+        if will_resize:
+            # Calculate new dimensions
+            if width > height:
+                new_width = target_size
+                new_height = int(height * (target_size / width))
+            else:
+                new_height = target_size
+                new_width = int(width * (target_size / height))
+                
+            # Round to multiple of 16
+            new_width = ((new_width + 15) // 16) * 16
+            new_height = ((new_height + 15) // 16) * 16
+            
+            dim_info += f"\n\nℹ️ Video will be resized to {new_width}x{new_height}"
+            
+        return gr.update(visible=True, value=dim_info)
+    except:
+        return gr.update(visible=True, value="Could not determine video dimensions")
 
 # extract frames from upload video
 def get_frames_from_video(video_input, video_state, enable_resize=False, max_size=1080):
+    if not video_input:
+        gr.Warning("Please upload a video first")
+        return [video_state] + [gr.update() for _ in range(17)] 
+    
     video_path = video_input
     frames = []
     user_name = time.time()
 
     # extract Audio
     try:
-        audio_path = video_input.replace(".mp4", "_audio.wav")
+        audio_path = video_path.replace(".mp4", "_audio.wav")
         probe = ffmpeg.probe(video_path)
         audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
         
@@ -332,7 +355,7 @@ def show_mask(video_state, interactive_state, mask_dropdown):
         return select_frame
 
 # image matting
-def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size, refine_iter):
+def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size, refine_iter, autosave=True):
     matanyone_processor = InferenceCore(matanyone_model, cfg=matanyone_model.cfg)
     if interactive_state["track_end_number"]:
         following_frames = video_state["origin_images"][video_state["select_frame_number"]:interactive_state["track_end_number"]]
@@ -358,6 +381,18 @@ def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     foreground_output = Image.fromarray(foreground[-1])
     alpha_output = Image.fromarray(alpha[-1][:,:,0])
 
+    # If autosave enabled, save the outputs
+    if autosave:
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+        os.makedirs(base_dir, exist_ok=True)
+        
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        fg_output_path = os.path.join(base_dir, f"image_fg_{timestamp}.png")
+        alpha_output_path = os.path.join(base_dir, f"image_alpha_{timestamp}.png")
+        
+        foreground_output.save(fg_output_path)
+        alpha_output.save(alpha_output_path)
+
     return foreground_output, alpha_output
 
 
@@ -371,6 +406,22 @@ def generate_output_filename(video_name, output_type="fg"):
     
     return f"{base_name}_{timestamp}{suffix}.mp4"
 
+# Add function to open folder
+def open_output_folder():
+    folder_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+    os.makedirs(folder_path, exist_ok=True)
+    
+    try:
+        if os.name == 'nt':  # Windows
+            subprocess.run(['explorer', folder_path])
+        elif sys.platform == 'darwin':  # macOS
+            subprocess.run(['open', folder_path])
+        else:  # Linux
+            subprocess.run(['xdg-open', folder_path])
+        return "Opened output folder"
+    except Exception as e:
+        return f"Failed to open folder: {str(e)}"
+    
 # Video Matting
 def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size, autosave=True):
     matanyone_processor = InferenceCore(matanyone_model, cfg=matanyone_model.cfg)
@@ -482,7 +533,8 @@ def restart():
             "inpaint_masks": None,
             "logits": None,
             "select_frame_number": 0,
-            "fps": 30
+            "fps": 30,
+            "audio": ""
         }, {
             "inference_times": 0,
             "negative_click_times" : 0,
@@ -497,7 +549,8 @@ def restart():
         gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),\
         gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), \
         gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), \
-        gr.update(visible=False), gr.update(visible=False, choices=[], value=[]), "", gr.update(visible=False)
+        gr.update(visible=False), gr.update(visible=False, choices=[], value=[]), "", gr.update(visible=False), \
+        gr.update(value=False), gr.update(visible=False, value=1024, maximum=2048)  # Reset resize controls
 
 # args, defined in track_anything.py
 args = parse_augment()
@@ -538,7 +591,7 @@ load_file_from_url(os.path.join(media_url, 'tutorial_multi_targets.mp4'), assets
 title = r"""<div class="multi-layer" align="center"><span>MatAnyone</span></div>
 """
 article = r"""
-<b>If MatAnyone is helpful, please help to 🌟 the <a href='https://github.com/pq-yang/MatAnyone' target='_blank'>Github Repo</a>. Thanks!</b>
+<b>If MatAnyone is proving useful, please take a moment to 🌟 the original <a href='https://github.com/pq-yang/MatAnyone' target='_blank'>Github Repo</a>. Thanks!</b>
 """
 
 my_custom_css = """
@@ -550,7 +603,7 @@ button {border-radius: 8px !important;}
 .new_button:hover {background-color: #4b4b4b !important;}
 .green_button:hover {background-color: #77bd79 !important;}
 
-.mask_button_group {gap: 10px !important;}
+.mask_button_group {gap: 5px !important;}
 .video .wrap.svelte-lcpz3o {
     display: flex !important;
     align-items: center !important;
@@ -566,72 +619,22 @@ button {border-radius: 8px !important;}
 .video .container.svelte-sxyn79 {
     display: none !important;
 }
-.margin_center {width: 50% !important; margin: auto !important;}
-.jc_center {justify-content: center !important;}
-.video-title {
-    margin-bottom: 5px !important;
+.settings-button {
+    background-color: var(--neutral-800) !important;
+    border: 1px solid rgba(128, 128, 128, 0.2) !important;
+    color: #ffffff !important;
+    height: 100% !important;  /* Match parent height */
+    min-height: 44px !important;  /* Match checkbox height */
 }
-.custom-bg {
-        background-color: #f0f0f0;
-        padding: 10px;
-        border-radius: 10px;
-    }
-
-.info-text {
-    color: #666;
-    font-size: 0.9em;
-    margin: 8px 0;
-    padding: 8px;
-    background-color: #f0f0f0;
-    border-radius: 4px;
+.settings-button:hover {
+    background-color: var(--neutral-700) !important;
+    border-color: rgba(128, 128, 128, 0.4) !important;
 }
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Sarpanch:wght@400;500;600;700;800;900&family=Sen:wght@400..800&family=Sixtyfour+Convergence&family=Stardos+Stencil:wght@400;700&display=swap');
-body {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-    background-color: #0d1117;
-    font-family: Arial, sans-serif;
-    font-size: 18px;
-    }
-.title-container {
-    text-align: center;
-    padding: 0;
-    margin: 0;
-    height: 5vh;
-    width: 80vw;
-    font-family: "Sarpanch", sans-serif;
-    font-weight: 60;
-}
-#custom-markdown {
-    font-family: "Roboto", sans-serif;
-    font-size: 18px;
-    color: #333333;
-    font-weight: bold;
-}
-small {
-    font-size: 60%;
-}
-</style>
+.settings-group {border-bottom: 1px solid rgba(128, 128, 128, 0.2);}
+.settings-group:last-child {border-bottom: none;}
 """
 
 with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
-    gr.HTML('''
-        <div class="title-container">
-            <h1 class="title is-2 publication-title"
-                style="font-size:50px; font-family: 'Sarpanch', serif; 
-                    background: linear-gradient(to right, #d231d8, #2dc464); 
-                    display: inline-block; -webkit-background-clip: text; 
-                    -webkit-text-fill-color: transparent;">
-                MatAnyone
-            </h1>
-        </div>
-    ''')
-
     with gr.Tabs():
         with gr.TabItem("Video"):
             click_state = gr.State([[],[]])
@@ -665,8 +668,8 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             )
 
             with gr.Group(visible=True):
-                with gr.Row():
-                    with gr.Accordion('MatAnyone Settings (click to expand)', open=False):
+                with gr.Accordion('MatAnyone Video Settings (click to expand)', open=False):
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Kernel size group
                         with gr.Row():
                             erode_kernel_size = gr.Slider(label='Erode Kernel Size',
                                                     minimum=0,
@@ -682,13 +685,20 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
+                    
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
                         with gr.Row():
-                            autosave_outputs = gr.Checkbox(
-                                label="Autosave Outputs",
-                                value=False,
-                                info="Automatically save outputs to the '.\app\outputs' folder",
-                                interactive=True
-                            )
+                            with gr.Column(): 
+                                autosave_outputs = gr.Checkbox(
+                                    label="Autosave Outputs",
+                                    value=False,
+                                    info="Automatically save video outputs to './app/outputs' folder",
+                                    interactive=True
+                                )
+                            with gr.Column():
+                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
+                    
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Frame selection group
                         with gr.Row():
                             image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Start Frame", info="Choose the start frame for target assignment and video matting", visible=False)
                             track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
@@ -720,7 +730,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         input_video_info = gr.Markdown(visible=False)
                         
                         with gr.Group():
-                            gr.Markdown("⚠️ Note: Video can only be resized once, and before `Load Video`")
+                            gr.Markdown("⚠️ Note: Video can only be resized once, and before sending it via `Load Video`")
                             enable_resize = gr.Checkbox(
                                 label="Resize Large Videos",
                                 value=False,
@@ -733,16 +743,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                 maximum=2048,
                                 step=16,
                                 value=1024,
-                                info="Videos will be resized to this resolution (maintaining aspect ratio)",
+                                info="Maximum dimension will be resized to this value (maintaining aspect ratio)",
                                 interactive=True,
                                 visible=False
                             )
                             gr.Markdown("🎬 Designed for short-form video")
                         
                         extract_frames_button = gr.Button(value="Load Video", interactive=True, elem_classes="new_button")
-                        
-                        # Add a warning/info message with custom styling
-                        resize_info = gr.Markdown(visible=False, value="ℹ️ Video will be resized to maintain max dimension of 1024px")
                         
                     with gr.Column(scale=2):
                         video_info = gr.Textbox(label="Video Info", visible=False)
@@ -777,35 +784,61 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         add_mask_button, matting_button, template_frame,
                         foreground_video_output, alpha_video_output, foreground_output_button, alpha_output_button, 
                         mask_dropdown, step2_title,
-                        enable_resize, max_size, resize_info]
+                        enable_resize, max_size]
             )   
 
             # Update the visibility toggle to also update the info message
-            def update_resize_visibility(enabled):
-                if enabled:
+            def update_resize_visibility(enabled, video_path):
+                if not enabled or not video_path:
+                    return {
+                        max_size: gr.update(visible=False),
+                        input_video_info: update_video_info(video_path, False)
+                    }
+                
+                try:
+                    # Get original dimensions
+                    cap = cv2.VideoCapture(video_path)
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    cap.release()
+                    
+                    # Set maximum to largest dimension, rounded up to nearest multiple of 16
+                    max_dim = max(width, height)
+                    max_dim = ((max_dim + 15) // 16) * 16
+                    
+                    # Don't allow scaling up
+                    slider_max = min(2048, max_dim)
+                    slider_value = min(1024, max_dim)
+                    
+                    return {
+                        max_size: gr.update(
+                            visible=True,
+                            maximum=slider_max,
+                            value=slider_value
+                        ),
+                        input_video_info: update_video_info(video_path, True, slider_value)
+                    }
+                except:
+                    # Fallback to default values if video can't be read
                     return {
                         max_size: gr.update(visible=True),
-                        resize_info: gr.update(visible=True)
+                        input_video_info: update_video_info(video_path, True, 1024)
                     }
-                return {
-                    max_size: gr.update(visible=False),
-                    resize_info: gr.update(visible=False)
-                }
 
             # Update the slider value change handler
-            def update_resize_info(value):
-                return gr.update(value=f"ℹ️ Video will be resized to maintain max dimension of {value}px")
+            def update_resize_info(value, video_path):
+                return update_video_info(video_path, True, value)
 
             enable_resize.change(
                 fn=update_resize_visibility,
-                inputs=[enable_resize],
-                outputs=[max_size, resize_info]
+                inputs=[enable_resize, video_input],
+                outputs=[max_size, input_video_info]
             )
 
             max_size.change(
                 fn=update_resize_info,
-                inputs=[max_size],
-                outputs=[resize_info]
+                inputs=[max_size, video_input],
+                outputs=[input_video_info]
             )
 
             # second step: select images from slider
@@ -855,22 +888,15 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             
             # clear input
             video_input.change(
-                fn=update_video_info,
-                inputs=[video_input],
-                outputs=[input_video_info]
-            )
-            
-            video_input.change(
                 fn=restart,
                 inputs=[],
                 outputs=[ 
-                    video_state,
-                    interactive_state,
-                    click_state,
-                    foreground_video_output, alpha_video_output,
-                    template_frame,
-                    image_selection_slider , track_pause_number_slider,point_prompt, clear_button_click, 
-                    add_mask_button, matting_button, template_frame, foreground_video_output, alpha_video_output, remove_mask_button, foreground_output_button, alpha_output_button, mask_dropdown, video_info, step2_title
+                    video_state, interactive_state, click_state,
+                    foreground_video_output, alpha_video_output, template_frame,
+                    image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, 
+                    add_mask_button, matting_button, template_frame, foreground_video_output, alpha_video_output, 
+                    remove_mask_button, foreground_output_button, alpha_output_button, mask_dropdown, video_info, step2_title,
+                    enable_resize, max_size  # Add resize controls to outputs
                 ],
                 queue=False,
                 show_progress=False)
@@ -879,13 +905,12 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                 fn=restart,
                 inputs=[],
                 outputs=[ 
-                    video_state,
-                    interactive_state,
-                    click_state,
-                    foreground_video_output, alpha_video_output,
-                    template_frame,
-                    image_selection_slider , track_pause_number_slider,point_prompt, clear_button_click, 
-                    add_mask_button, matting_button, template_frame, foreground_video_output, alpha_video_output, remove_mask_button, foreground_output_button, alpha_output_button, mask_dropdown, video_info, step2_title
+                    video_state, interactive_state, click_state,
+                    foreground_video_output, alpha_video_output, template_frame,
+                    image_selection_slider, track_pause_number_slider, point_prompt, clear_button_click, 
+                    add_mask_button, matting_button, template_frame, foreground_video_output, alpha_video_output, 
+                    remove_mask_button, foreground_output_button, alpha_output_button, mask_dropdown, video_info, step2_title,
+                    enable_resize, max_size  # Add resize controls to outputs
                 ],
                 queue=False,
                 show_progress=False)
@@ -916,6 +941,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                             with gr.Column():
                                 gr.Markdown("### Case 2: Multiple Targets")
                                 gr.Video(value="./assets/tutorial_multi_targets.mp4", elem_classes="video")
+
+            # Add click handlers in both tabs
+            open_folder_button.click(
+                fn=open_output_folder,
+                inputs=[],
+                outputs=[]
+            )
 
         with gr.TabItem("Image"):
             click_state = gr.State([[],[]])
@@ -948,8 +980,8 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             )
 
             with gr.Group(visible=True):
-                with gr.Row():
-                    with gr.Accordion('MatAnyone Settings (click to expand)', open=False):
+                with gr.Accordion('MatAnyone Image Settings (click to expand)', open=False):
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Kernel size group
                         with gr.Row():
                             erode_kernel_size = gr.Slider(label='Erode Kernel Size',
                                                     minimum=0,
@@ -965,16 +997,25 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-                        # with gr.Row():
-                            # autosave_outputs = gr.Checkbox(
-                                # label="Autosave Outputs",
-                                # value=False,
-                                # info="Automatically save outputs to the 'app\outputs' folder",
-                                # interactive=True
-                            # )
+                    
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
                         with gr.Row():
-                            image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Num of Refinement Iterations", info="More iterations → More details & More time", visible=False)
-                            track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
+                            with gr.Column(): 
+                                autosave_outputs = gr.Checkbox(
+                                    label="Autosave Outputs",
+                                    value=False,
+                                    info="Automatically save image outputs to './app/outputs' folder",
+                                    interactive=True
+                                )
+                            with gr.Column(): 
+                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
+                    
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Frame selection group
+                        with gr.Row():
+                            image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, 
+                                label="Num of Refinement Iterations", 
+                                info="More iterations → More details & More time", 
+                                visible=False)
                         with gr.Row():
                             point_prompt = gr.Radio(
                                 choices=["Positive", "Negative"],
@@ -985,7 +1026,12 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                 visible=False,
                                 min_width=100,
                                 scale=1)
-                            mask_dropdown = gr.Dropdown(multiselect=True, value=[], label="Mask Selection", info="Choose 1~all mask(s) added in Step 2", visible=False)
+                            mask_dropdown = gr.Dropdown(
+                                multiselect=True, 
+                                value=[], 
+                                label="Mask Selection", 
+                                info="Choose 1~all mask(s) added in Step 2", 
+                                visible=False)
 
             gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
 
@@ -1060,7 +1106,11 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             # image matting
             matting_button.click(
                 fn=image_matting,
-                inputs=[image_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size, image_selection_slider],
+                inputs=[
+                    image_state, interactive_state, mask_dropdown, 
+                    erode_kernel_size, dilate_kernel_size, image_selection_slider,
+                    autosave_outputs
+                ],
                 outputs=[foreground_image_output, alpha_image_output]
             )
 
@@ -1116,6 +1166,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                     inputs=[image_input],
                 )
 
+            # Add click handlers in both tabs
+            open_folder_button.click(
+                fn=open_output_folder,
+                inputs=[],
+                outputs=[]
+            )
+
     with gr.Accordion("📚 Citation, License & Acknowledgements", open=False):
         gr.Markdown("""
     📑 **Citation**
@@ -1144,5 +1201,4 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
     """)
     gr.Markdown(article)
 
-demo.queue()
 demo.launch(debug=True)
