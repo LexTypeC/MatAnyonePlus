@@ -109,7 +109,7 @@ def get_frames_from_image(image_input, image_state):
 def resize_video_frames(frames, max_size):
     """
     Resize video frames if they're too large.
-    Maintains aspect ratio by scaling the larger dimension to max_size.
+    Maintains aspect ratio and ensures dimensions are compatible with video codecs.
     """
     if not frames or not frames[0].size:
         return frames
@@ -127,6 +127,10 @@ def resize_video_frames(frames, max_size):
     else:
         new_height = max_size
         new_width = int(frame_width * (max_size / frame_height))
+    
+    # Ensure dimensions are divisible by 16 (round up)
+    new_width = ((new_width + 15) // 16) * 16
+    new_height = ((new_height + 15) // 16) * 16
         
     # Resize all frames
     resized_frames = [cv2.resize(f, (new_width, new_height), interpolation=cv2.INTER_AREA) for f in frames]
@@ -368,7 +372,7 @@ def generate_output_filename(video_name, output_type="fg"):
     return f"{base_name}_{timestamp}{suffix}.mp4"
 
 # Video Matting
-def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size):
+def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size, autosave=True):
     matanyone_processor = InferenceCore(matanyone_model, cfg=matanyone_model.cfg)
     if interactive_state["track_end_number"]:
         following_frames = video_state["origin_images"][video_state["select_frame_number"]:interactive_state["track_end_number"]]
@@ -394,12 +398,29 @@ def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
         template_mask[0][0]=1
     foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size)
 
-    # Generate unique filenames with timestamp
-    fg_output_path = os.path.join("./results/", generate_output_filename(video_state["video_name"], output_type="fg"))
-    alpha_output_path = os.path.join("./results/", generate_output_filename(video_state["video_name"], output_type="alpha"))
+    # First generate outputs to temp location for display
+    temp_dir = os.path.join(".", "results")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    foreground_output = generate_video_from_frames(foreground, 
+        output_path=os.path.join(temp_dir, "temp_fg.mp4"), 
+        fps=fps, audio_path=audio_path)
+    alpha_output = generate_video_from_frames(alpha, 
+        output_path=os.path.join(temp_dir, "temp_alpha.mp4"), 
+        fps=fps, gray2rgb=True, audio_path=audio_path)
 
-    foreground_output = generate_video_from_frames(foreground, output_path=fg_output_path, fps=fps, audio_path=audio_path)
-    alpha_output = generate_video_from_frames(alpha, output_path=alpha_output_path, fps=fps, gray2rgb=True, audio_path=audio_path)
+    # If autosave enabled, save additional copies to outputs folder
+    if autosave:
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+        os.makedirs(base_dir, exist_ok=True)
+        
+        fg_output_path = os.path.join(base_dir, generate_output_filename(video_state["video_name"], output_type="fg"))
+        alpha_output_path = os.path.join(base_dir, generate_output_filename(video_state["video_name"], output_type="alpha"))
+        
+        # Copy the files to outputs directory
+        import shutil
+        shutil.copy2(foreground_output, fg_output_path)
+        shutil.copy2(alpha_output, alpha_output_path)
     
     return foreground_output, alpha_output
 
@@ -661,7 +682,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-
+                        with gr.Row():
+                            autosave_outputs = gr.Checkbox(
+                                label="Autosave Outputs",
+                                value=True,
+                                info="Automatically save outputs to the 'outputs' folder",
+                                interactive=True
+                            )
                         with gr.Row():
                             image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Start Frame", info="Choose the start frame for target assignment and video matting", visible=False)
                             track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
@@ -812,7 +839,10 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
             # video matting
             matting_button.click(
                 fn=video_matting,
-                inputs=[video_state, interactive_state, mask_dropdown, erode_kernel_size, dilate_kernel_size],
+                inputs=[
+                    video_state, interactive_state, mask_dropdown, 
+                    erode_kernel_size, dilate_kernel_size, autosave_outputs
+                ],
                 outputs=[foreground_video_output, alpha_video_output]
             )
 
@@ -935,7 +965,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-                            
+                        with gr.Row():
+                            autosave_outputs = gr.Checkbox(
+                                label="Autosave Outputs",
+                                value=True,
+                                info="Automatically save outputs to the 'app\outputs' folder",
+                                interactive=True
+                            )
                         with gr.Row():
                             image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Num of Refinement Iterations", info="More iterations → More details & More time", visible=False)
                             track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
