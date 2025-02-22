@@ -968,7 +968,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         with gr.Row():
                             autosave_outputs = gr.Checkbox(
                                 label="Autosave Outputs",
-                                value=True,
+                                value=False,
                                 info="Automatically save outputs to the 'app\outputs' folder",
                                 interactive=True
                             )
