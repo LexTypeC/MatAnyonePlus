@@ -685,7 +685,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         with gr.Row():
                             autosave_outputs = gr.Checkbox(
                                 label="Autosave Outputs",
-                                value=True,
+                                value=False,
                                 info="Automatically save outputs to the '.\app\outputs' folder",
                                 interactive=True
                             )
@@ -965,13 +965,13 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-                        with gr.Row():
-                            autosave_outputs = gr.Checkbox(
-                                label="Autosave Outputs",
-                                value=False,
-                                info="Automatically save outputs to the 'app\outputs' folder",
-                                interactive=True
-                            )
+                        # with gr.Row():
+                            # autosave_outputs = gr.Checkbox(
+                                # label="Autosave Outputs",
+                                # value=False,
+                                # info="Automatically save outputs to the 'app\outputs' folder",
+                                # interactive=True
+                            # )
                         with gr.Row():
                             image_selection_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Num of Refinement Iterations", info="More iterations → More details & More time", visible=False)
                             track_pause_number_slider = gr.Slider(minimum=1, maximum=100, step=1, value=1, label="Track end frame", visible=False)
