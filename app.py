@@ -693,7 +693,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         input_video_info = gr.Markdown(visible=False)
                         
                         with gr.Group():
-                            gr.Markdown("⚠️ Note: Video can only be resized once per video upload")
+                            gr.Markdown("⚠️ Note: Video can only be resized once, and before `Load Video`")
                             enable_resize = gr.Checkbox(
                                 label="Resize Large Videos",
                                 value=False,
