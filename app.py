@@ -663,6 +663,18 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
 
             with gr.Group(visible=True):
                 with gr.Accordion('MatAnyone Video Settings (click to expand)', open=False):
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
+                        with gr.Row():
+                            with gr.Column(): 
+                                autosave_outputs = gr.Checkbox(
+                                    label="Autosave Outputs",
+                                    value=False,
+                                    info="Automatically save video outputs to './app/outputs' folder",
+                                    interactive=True
+                                )
+                            with gr.Column():
+                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
+                    
                     with gr.Group(visible=True, elem_classes="settings-group"):  # Kernel size group
                         with gr.Row():
                             erode_kernel_size = gr.Slider(label='Erode Kernel Size',
@@ -679,18 +691,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-                    
-                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
-                        with gr.Row():
-                            with gr.Column(): 
-                                autosave_outputs = gr.Checkbox(
-                                    label="Autosave Outputs",
-                                    value=False,
-                                    info="Automatically save video outputs to './app/outputs' folder",
-                                    interactive=True
-                                )
-                            with gr.Column():
-                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
                     
                     with gr.Group(visible=True, elem_classes="settings-group"):  # Frame selection group
                         with gr.Row():
@@ -975,6 +975,18 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
 
             with gr.Group(visible=True):
                 with gr.Accordion('MatAnyone Image Settings (click to expand)', open=False):
+                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
+                        with gr.Row():
+                            with gr.Column(): 
+                                autosave_outputs = gr.Checkbox(
+                                    label="Autosave Outputs",
+                                    value=False,
+                                    info="Automatically save image outputs to './app/outputs' folder",
+                                    interactive=True
+                                )
+                            with gr.Column(): 
+                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
+                    
                     with gr.Group(visible=True, elem_classes="settings-group"):  # Kernel size group
                         with gr.Row():
                             erode_kernel_size = gr.Slider(label='Erode Kernel Size',
@@ -991,18 +1003,6 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                                     value=10,
                                                     info="Dilation on the added mask",
                                                     interactive=True)
-                    
-                    with gr.Group(visible=True, elem_classes="settings-group"):  # Output options group
-                        with gr.Row():
-                            with gr.Column(): 
-                                autosave_outputs = gr.Checkbox(
-                                    label="Autosave Outputs",
-                                    value=False,
-                                    info="Automatically save image outputs to './app/outputs' folder",
-                                    interactive=True
-                                )
-                            with gr.Column(): 
-                                open_folder_button = gr.Button("📂 Open Output Folder", size="sm", elem_classes=["new_button", "settings-button"])
                     
                     with gr.Group(visible=True, elem_classes="settings-group"):  # Frame selection group
                         with gr.Row():
