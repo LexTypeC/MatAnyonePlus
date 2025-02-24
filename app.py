@@ -378,22 +378,28 @@ def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     if len(np.unique(template_mask))==1:
         template_mask[0][0]=1
     foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, n_warmup=refine_iter)
+    
+    # Generate output filenames with timestamps
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    fg_output_name = f"image_fg_{timestamp}.png"
+    alpha_output_name = f"image_alpha_{timestamp}.png"
+
+    # Create outputs directory
+    output_dir = os.path.join(".", "results") if not autosave else os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save images with consistent naming
     foreground_output = Image.fromarray(foreground[-1])
     alpha_output = Image.fromarray(alpha[-1][:,:,0])
+    
+    fg_path = os.path.join(output_dir, fg_output_name)
+    alpha_path = os.path.join(output_dir, alpha_output_name)
+    
+    foreground_output.save(fg_path)
+    alpha_output.save(alpha_path)
 
-    # If autosave enabled, save the outputs
-    if autosave:
-        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
-        os.makedirs(base_dir, exist_ok=True)
-        
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        fg_output_path = os.path.join(base_dir, f"image_fg_{timestamp}.png")
-        alpha_output_path = os.path.join(base_dir, f"image_alpha_{timestamp}.png")
-        
-        foreground_output.save(fg_output_path)
-        alpha_output.save(alpha_output_path)
-
-    return foreground_output, alpha_output
+    # Return the paths instead of the PIL Images
+    return fg_path, alpha_path
 
 
 def generate_output_filename(video_name, output_type="fg"):
@@ -449,29 +455,21 @@ def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
         template_mask[0][0]=1
     foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size)
 
-    # First generate outputs to temp location for display
-    temp_dir = os.path.join(".", "results")
-    os.makedirs(temp_dir, exist_ok=True)
+    # Generate output filenames with timestamps
+    fg_output_name = generate_output_filename(video_state["video_name"], output_type="fg")
+    alpha_output_name = generate_output_filename(video_state["video_name"], output_type="alpha")
+
+    # Create outputs directory
+    output_dir = os.path.join(".", "results") if not autosave else os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
     
+    # Generate videos with consistent naming
     foreground_output = generate_video_from_frames(foreground, 
-        output_path=os.path.join(temp_dir, "temp_fg.mp4"), 
+        output_path=os.path.join(output_dir, fg_output_name),
         fps=fps, audio_path=audio_path)
     alpha_output = generate_video_from_frames(alpha, 
-        output_path=os.path.join(temp_dir, "temp_alpha.mp4"), 
+        output_path=os.path.join(output_dir, alpha_output_name),
         fps=fps, gray2rgb=True, audio_path=audio_path)
-
-    # If autosave enabled, save additional copies to outputs folder
-    if autosave:
-        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
-        os.makedirs(base_dir, exist_ok=True)
-        
-        fg_output_path = os.path.join(base_dir, generate_output_filename(video_state["video_name"], output_type="fg"))
-        alpha_output_path = os.path.join(base_dir, generate_output_filename(video_state["video_name"], output_type="alpha"))
-        
-        # Copy the files to outputs directory
-        import shutil
-        shutil.copy2(foreground_output, fg_output_path)
-        shutil.copy2(alpha_output, alpha_output_path)
     
     return foreground_output, alpha_output
 
@@ -495,11 +493,6 @@ def add_audio_to_video(video_path, audio_path, output_path):
 def generate_video_from_frames(frames, output_path, fps=30, gray2rgb=False, audio_path=""):
     """
     Generates a video from a list of frames.
-    
-    Args:
-        frames (list of numpy arrays): The frames to include in the video.
-        output_path (str): The path to save the generated video.
-        fps (int, optional): The frame rate of the output video. Defaults to 30.
     """
     frames = torch.from_numpy(np.asarray(frames))
     _, h, w, _ = frames.shape
@@ -508,19 +501,20 @@ def generate_video_from_frames(frames, output_path, fps=30, gray2rgb=False, audi
 
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
-    video_temp_path = output_path.replace(".mp4", "_temp.mp4")
     
-    # resize back to ensure input resolution
-    imageio.mimwrite(video_temp_path, frames, fps=fps, quality=7, 
+    # Write to a temporary file first
+    temp_path = output_path.replace(".mp4", "_temp.mp4") 
+    imageio.mimwrite(temp_path, frames, fps=fps, quality=7, 
                      codec='libx264', ffmpeg_params=["-vf", f"scale={w}:{h}"])
     
-    # add audio to video if audio path exists
-    if audio_path != "" and os.path.exists(audio_path):
-        output_path = add_audio_to_video(video_temp_path, audio_path, output_path)    
-        os.remove(video_temp_path)
+    # Add audio if it exists, otherwise just rename temp to final
+    if audio_path and os.path.exists(audio_path):
+        output_path = add_audio_to_video(temp_path, audio_path, output_path)    
+        os.remove(temp_path)
         return output_path
     else:
-        return video_temp_path
+        os.rename(temp_path, output_path)
+        return output_path
 
 # reset all states for a new input
 def restart():
