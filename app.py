@@ -325,6 +325,12 @@ def sam_refine(video_state, point_prompt, click_state, interactive_state, evt:gr
 
 def add_multi_mask(video_state, interactive_state, mask_dropdown):
     mask = video_state["masks"][video_state["select_frame_number"]]
+    
+    # Check if mask is empty or covers the entire frame (all zeros or all ones)
+    if mask.size == 0 or np.all(mask == 0) or np.all(mask == 1):
+        gr.Warning("Please create a mask by clicking on the image before saving")
+        return interactive_state, gr.update(choices=interactive_state["multi_mask"]["mask_names"], value=mask_dropdown), video_state["painted_images"][video_state["select_frame_number"]], [[],[]]
+    
     interactive_state["multi_mask"]["masks"].append(mask)
     interactive_state["multi_mask"]["mask_names"].append("mask_{:03d}".format(len(interactive_state["multi_mask"]["masks"])))
     mask_dropdown.append("mask_{:03d}".format(len(interactive_state["multi_mask"]["masks"])))
@@ -706,7 +712,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                                 visible=False,
                                 min_width=100,
                                 scale=1)
-                            mask_dropdown = gr.Dropdown(multiselect=True, value=[], label="Mask Selection", info="Choose 1~all mask(s) added in Step 2", visible=False)
+                            mask_dropdown = gr.Dropdown(multiselect=True, value=[], label="Mask Selection", info="(de)Select created mask(s) added via Save Mask", visible=False)
             
             gr.HTML('<hr style="border: none; height: 1.5px; background: linear-gradient(to right, #a566b4, #74a781);margin: 5px 0;">')
 
@@ -714,9 +720,9 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                 # input video
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2): 
-                        gr.Markdown("## Step 1: Upload & Configure Video")
+                        gr.Markdown("## Upload & Resize Video")
                     with gr.Column(scale=2): 
-                        step2_title = gr.Markdown("## Step 2: Masking <small> (Use **`Add Mask`** to add multiple masks)</small>", visible=False)
+                        step2_title = gr.Markdown("## Masking: <small> (Click to mask. **`Save Mask`** to add)</small>", visible=False)
                 
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2):      
@@ -724,7 +730,7 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                         input_video_info = gr.Markdown(visible=False)
                         
                         with gr.Group():
-                            gr.Markdown("⚠️ Note: Video can only be resized once, and before sending it via `Load Video`")
+                            gr.Markdown("⚠️ Note: Video can only be resized once, and before `Send to Masking`")
                             enable_resize = gr.Checkbox(
                                 label="Resize Large Videos",
                                 value=False,
@@ -743,14 +749,14 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                             )
                             gr.Markdown("🎬 Designed for short-form video")
                         
-                        extract_frames_button = gr.Button(value="Load Video", interactive=True, elem_classes="new_button")
+                        extract_frames_button = gr.Button(value="Send to Masking", interactive=True, elem_classes="new_button")
                         
                     with gr.Column(scale=2):
                         video_info = gr.Textbox(label="Video Info", visible=False)
                         template_frame = gr.Image(label="Start Frame", type="pil",interactive=True, elem_id="template_frame", visible=False, elem_classes="image")
                         with gr.Row(equal_height=True, elem_classes="mask_button_group"):
                             clear_button_click = gr.Button(value="Clear Clicks", interactive=True, visible=False, elem_classes="new_button", min_width=100)
-                            add_mask_button = gr.Button(value="Add Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
+                            add_mask_button = gr.Button(value="Save Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
                             remove_mask_button = gr.Button(value="Remove Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100) # no use
                             matting_button = gr.Button(value="Video Matting", interactive=True, visible=False, elem_classes="green_button", min_width=100)
                 
@@ -1033,19 +1039,19 @@ with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
                 # input image
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2): 
-                        gr.Markdown("## Step1: Upload image")
+                        gr.Markdown("## Upload image")
                     with gr.Column(scale=2): 
-                        step2_title = gr.Markdown("## Step2: Add masks <small> (Several clicks then **`Add Mask`** <u>one by one</u>)</small>", visible=False)
+                        step2_title = gr.Markdown("## Add masks: <small> (Click to mask. **`Save Mask`** to add)</small>", visible=False)
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2):      
                         image_input = gr.Image(label="Input Image", elem_classes="image")
-                        extract_frames_button = gr.Button(value="Load Image", interactive=True, elem_classes="new_button")
+                        extract_frames_button = gr.Button(value="Send to Masking", interactive=True, elem_classes="new_button")
                     with gr.Column(scale=2):
                         image_info = gr.Textbox(label="Image Info", visible=False)
                         template_frame = gr.Image(type="pil", label="Start Frame", interactive=True, elem_id="template_frame", visible=False, elem_classes="image")
                         with gr.Row(equal_height=True, elem_classes="mask_button_group"):
                             clear_button_click = gr.Button(value="Clear Clicks", interactive=True, visible=False, elem_classes="new_button", min_width=100)
-                            add_mask_button = gr.Button(value="Add Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
+                            add_mask_button = gr.Button(value="Save Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
                             remove_mask_button = gr.Button(value="Remove Mask", interactive=True, visible=False, elem_classes="new_button", min_width=100)
                             matting_button = gr.Button(value="Image Matting", interactive=True, visible=False, elem_classes="green_button", min_width=100)
 
