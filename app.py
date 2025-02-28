@@ -634,7 +634,8 @@ button {border-radius: 8px !important;}
 .settings-group:last-child {border-bottom: none;}
 """
 
-with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
+#with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
+with gr.Blocks() as demo:
     with gr.Tabs():
         with gr.TabItem("Video"):
             click_state = gr.State([[],[]])
