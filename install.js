@@ -12,7 +12,7 @@ module.exports = {
       method: "shell.run",
       params: {
         message: [
-          "git clone https://github.com/pq-yang/MatAnyone.git app",
+          "git clone https://github.com/cocktailpeanut/MatAnyone app",
         ]
       }
     },
