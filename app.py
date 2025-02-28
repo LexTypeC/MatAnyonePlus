@@ -383,7 +383,7 @@ def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     # operation error
     if len(np.unique(template_mask))==1:
         template_mask[0][0]=1
-    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, n_warmup=refine_iter)
+    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, n_warmup=refine_iter, device=args.device)
     
     # Generate output filenames with timestamps
     timestamp = time.strftime("%Y%m%d_%H%M%S")
