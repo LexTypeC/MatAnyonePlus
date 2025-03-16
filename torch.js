@@ -43,7 +43,7 @@ module.exports = {
         "message": "uv pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 numpy==1.26.4"
       }
     },
-    // mac
+    // apple mac
     {
       "when": "{{platform === 'darwin' && arch === 'arm64'}}",
       "method": "shell.run",
