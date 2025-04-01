@@ -4,10 +4,7 @@
     "https://x.com/Teslanaut/status/1896837830099468759"
   ],
   "links": [{
-    "title": "ai-anchorite",
-    "links": [{
-      "title": "Github",
-      "value": "https://github.com/ai-anchorite"
-    }]
+    "title": "Github",
+    "value": "https://github.com/ai-anchorite"
   }]
 }
