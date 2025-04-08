@@ -394,7 +394,7 @@ def image_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     # operation error
     if len(np.unique(template_mask))==1:
         template_mask[0][0]=1
-    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, n_warmup=refine_iter)
+    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, n_warmup=refine_iter, device=args.device)
     
     # Generate output filenames with timestamps
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -470,7 +470,7 @@ def video_matting(video_state, interactive_state, mask_dropdown, erode_kernel_si
     # operation error
     if len(np.unique(template_mask))==1:
         template_mask[0][0]=1
-    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size)
+    foreground, alpha = matanyone(matanyone_processor, following_frames, template_mask*255, r_erode=erode_kernel_size, r_dilate=dilate_kernel_size, device=args.device)
 
     # Generate output filenames with timestamps
     fg_output_name = generate_output_filename(video_state["video_name"], output_type="fg")
@@ -645,7 +645,8 @@ button {border-radius: 8px !important;}
 .settings-group:last-child {border-bottom: none;}
 """
 
-with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
+#with gr.Blocks(theme=gr.themes.Monochrome(), css=my_custom_css) as demo:
+with gr.Blocks() as demo:
     with gr.Tabs():
         with gr.TabItem("Video"):
             click_state = gr.State([[],[]])
