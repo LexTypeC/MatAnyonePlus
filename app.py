@@ -38,9 +38,20 @@ def parse_augment():
     args = parser.parse_args()
     
     if not args.device:
-        args.device = str(get_device())
+        try:
+            args.device = str(get_device())
+        except Exception:
+            # Same gpu_str logic as the original but bypassing pre-release torch check
+            gpu_str = ''
+            
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                args.device = "mps" + gpu_str
+            elif torch.cuda.is_available() and torch.backends.cudnn.is_available():
+                args.device = "cuda" + gpu_str
+            else:
+                args.device = "cpu"
 
-    return args 
+    return args
 
 # SAM generator
 class MaskGenerator():
