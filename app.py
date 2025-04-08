@@ -19,7 +19,7 @@ import gradio as gr
  
 from tools.painter import mask_painter
 from tools.interact_tools import SamControler
-from tools.misc import get_device
+# from tools.misc import get_device
 from tools.download_util import load_file_from_url
 
 from matanyone_wrapper import matanyone
@@ -32,24 +32,30 @@ warnings.filterwarnings("ignore")
 def parse_augment():
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', type=str, default=None)
+    parser.add_argument('--gpu_id', type=str, default=None, help="GPU ID to use (e.g., 0, 1, 2)")
     parser.add_argument('--sam_model_type', type=str, default="vit_h")
     parser.add_argument('--port', type=int, default=8000, help="only useful when running gradio applications")  
     parser.add_argument('--mask_save', default=False)
     args = parser.parse_args()
     
     if not args.device:
-        try:
-            args.device = str(get_device())
-        except Exception:
-            # Same gpu_str logic as the original but bypassing pre-release torch check
-            gpu_str = ''
-            
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                args.device = "mps" + gpu_str
-            elif torch.cuda.is_available() and torch.backends.cudnn.is_available():
-                args.device = "cuda" + gpu_str
-            else:
-                args.device = "cpu"
+        # bypass misc.py and implement device selection directly
+        gpu_str = ''
+        
+        # Validate gpu_id is a valid integer if provided
+        if args.gpu_id is not None:
+            try:
+                gpu_id_int = int(args.gpu_id)
+                gpu_str = f':{gpu_id_int}'
+            except ValueError:
+                print(f"Warning: Invalid GPU ID '{args.gpu_id}'. Expected an integer. Using default GPU.")
+        
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            args.device = "mps" + gpu_str
+        elif torch.cuda.is_available() and torch.backends.cudnn.is_available():
+            args.device = "cuda" + gpu_str
+        else:
+            args.device = "cpu"
 
     return args
 
