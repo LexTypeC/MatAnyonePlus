@@ -16,6 +16,12 @@ module.exports = {
       src: "app.py",
       dest: "app/hugging_face/app.py"
     }
+  }, {
+    method: "fs.copy",
+    params: {
+      src: "matanyone_wrapper.py",
+      dest: "app/hugging_face/matanyone_wrapper.py"
+    }
   },
  ]
 }

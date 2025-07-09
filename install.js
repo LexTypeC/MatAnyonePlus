@@ -23,6 +23,13 @@ module.exports = {
         dest: "app/hugging_face/app.py"
       }
     },
+    {
+      method: "fs.copy",
+      params: {
+        src: "matanyone_wrapper.py",
+        dest: "app/hugging_face/matanyone_wrapper.py"
+      }
+    },
     // Delete this step if your project does not use torch
     {
       method: "script.start",
